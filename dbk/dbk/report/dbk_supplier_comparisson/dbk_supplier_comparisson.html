@@ -1,0 +1,157 @@
+<!--
+
+{% extends "templates/print_formats/standard.html" %}
+
+{% block content %}
+<style>
+  .report-title {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 10px;
+  }
+  .company-header {
+    text-align: center;
+    margin-bottom: 25px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: center;
+  }
+  th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+  }
+  .highlight {
+    background-color: #e2f7e2; /* light green for min price */
+    font-weight: bold;
+  }
+  .expired {
+    color: red;
+  }
+  .soon-expiring {
+    color: orange;
+  }
+</style>
+
+<div class="company-header">
+  <h3>{{ frappe.defaults.get_user_default("Company") }}</h3>
+  <p><b>Supplier Quotation Comparison</b></p>
+  {% if filters.request_for_quotation %}
+  <p>Request for Quotation: <b>{{ filters.request_for_quotation }}</b></p>
+  {% endif %}
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Item Code</th>
+      <th>UOM</th>
+      <th>Quantity</th>
+      {% for supplier in data | map(attribute='supplier_name') | unique %}
+        <th>{{ supplier }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+
+  <tbody>
+    {% for item_code, group in data | groupby('item_code') %}
+      <tr>
+        <td><b>{{ item_code }}</b></td>
+        <td>{{ group[0].uom }}</td>
+        <td>{{ group[0].qty }}</td>
+
+        {% set min_price = group | map(attribute='price_per_unit') | min %}
+        {% for supplier in data | map(attribute='supplier_name') | unique %}
+          {% set entry = (group | selectattr('supplier_name', 'equalto', supplier) | list | first) %}
+          {% if entry %}
+            <td class="{% if entry.price_per_unit == min_price %}highlight{% endif %}">
+              {{ frappe.format(entry.price_per_unit, {"fieldtype": "Currency"}) }}
+              <br><small>{{ entry.currency }}</small>
+              {% if entry.valid_till %}
+                <br><small
+                  class="{% if frappe.utils.date_diff(entry.valid_till, frappe.utils.nowdate()) <= 0 %}expired{% elif frappe.utils.date_diff(entry.valid_till, frappe.utils.nowdate()) <= 7 %}soon-expiring{% endif %}">
+                  Valid till {{ frappe.format(entry.valid_till, {"fieldtype": "Date"}) }}
+                </small>
+              {% endif %}
+            </td>
+          {% else %}
+            <td>-</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p style="margin-top:15px;font-size:11px;color:gray;">
+  <i>Green cells indicate the lowest supplier price per item.</i>
+</p>
+{% endblock %}
+
+-->
+
+<style>
+  .comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+  }
+  .comparison-table th, .comparison-table td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: right;
+  }
+  .comparison-table th {
+    background-color: #f5f5f5;
+    text-align: center;
+    font-weight: 600;
+  }
+  .comparison-table td:first-child {
+    text-align: left;
+    font-weight: 500;
+  }
+  .highlight-min {
+    background-color: #d4edda; /* light green for lowest price */
+  }
+</style>
+
+<h3 style="text-align:center; margin-bottom:10px;">
+  Supplier Comparison — RFQ: {{ filters.request_for_quotation }}
+</h3>
+
+<table class="comparison-table">
+  <thead>
+    <tr>
+      <th>Item</th>
+      {% for supplier in columns[1:] %}
+      <th>{{ supplier.label }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in data %}
+    <tr>
+      <td>{{ row.item_name }}</td>
+      {% set min_price = none %}
+      {% for supplier in columns[1:] %}
+        {% if row[supplier.fieldname] and (min_price is none or row[supplier.fieldname] < min_price) %}
+          {% set min_price = row[supplier.fieldname] %}
+        {% endif %}
+      {% endfor %}
+      {% for supplier in columns[1:] %}
+        {% set rate = row[supplier.fieldname] %}
+        <td class="{% if rate == min_price %}highlight-min{% endif %}">
+          {% if rate %}{{ rate | round(2) }}{% else %}-{% endif %}
+        </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
