@@ -137,6 +137,13 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
+doc_events = {
+    "Purchase Order": {
+        "autoname": "dbk.api.purchase_order.autoname"
+    }
+}
+
+
 # doc_events = {
 # 	"*": {
 # 		"on_update": "method",
