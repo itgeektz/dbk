@@ -120,11 +120,14 @@ app_license = "mit"
 # permission_query_conditions = {
 # 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
 
+permission_query_conditions = {
+    "Stock Entry": "dbk.api.stock_entry.stock_entry_permission_query"
+}
+
+has_permission = {
+    "Stock Entry": "dbk.api.stock_entry.stock_entry_has_permission"
+}
 # DocType Class
 # ---------------
 # Override standard doctype classes
@@ -140,6 +143,11 @@ app_license = "mit"
 doc_events = {
     "Purchase Order": {
         "autoname": "dbk.api.purchase_order.autoname"
+    },
+    "Stock Entry": {
+        "on_update": "dbk.api.stock_entry.share_stock_entry_on_review",
+        "before_submit": "dbk.api.stock_entry.check_receive_permission",
+        "before_save": "dbk.api.stock_entry.before_save",
     }
 }
 

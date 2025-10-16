@@ -12,7 +12,7 @@ def get_user_warehouses():
     # Fetch User Permissions safely
     permissions = frappe.get_all(
         "User Permission",
-        filters={"user": user, "allow": "Warehouse"},
+        filters={"user": user, "allow": "Warehouse", "apply_to_all_doctypes": 1},
         fields=["for_value"]
     )
     # Return list of allowed warehouses
