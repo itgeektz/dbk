@@ -147,7 +147,7 @@ doc_events = {
     "Stock Entry": {
         "on_update": "dbk.api.stock_entry.share_stock_entry_on_review",
         "before_submit": "dbk.api.stock_entry.check_receive_permission",
-        "before_save": "dbk.api.stock_entry.before_save",
+        "before_validate": "dbk.api.stock_entry.before_save",
     }
 }
 

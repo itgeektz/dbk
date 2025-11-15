@@ -151,43 +151,73 @@ def stock_entry_has_permission(doc, user):
     return False
 
 def before_save(doc, method=None):
-    # Only run this check if workflow_state is not in the excluded list
-    if doc.workflow_state not in ["Reviewed", "Received", "Rejected", "Submitted"]:
-        for item in doc.items:
-            if item.s_warehouse:
-                is_group = frappe.db.get_value("Warehouse", item.s_warehouse, "is_group")
-                if is_group:
-                    # Get left and right values to find all child warehouses under this group
-                    lft = frappe.db.get_value("Warehouse", item.s_warehouse, "lft")
-                    rgt = frappe.db.get_value("Warehouse", item.s_warehouse, "rgt")
+    # Only run this check if workflow_state is not in excluded list
+    if doc.workflow_state in ["Reviewed", "Received", "Rejected", "Submitted"]:
+        return
 
-                    # Get all child warehouses under the group
-                    child_warehouses = frappe.get_all(
-                        "Warehouse",
-                        filters={"lft": [">", lft], "rgt": ["<", rgt]},
-                        pluck="name"
-                    )
+    for item in doc.items:
 
-                    # Check which of those have stock for this item
-                    stock_info = []
-                    for wh in child_warehouses:
-                        qty = frappe.db.get_value(
-                            "Bin",
-                            {"item_code": item.item_code, "warehouse": wh},
-                            "actual_qty"
-                        )
-                        if qty and qty > 0:
-                            stock_info.append(f"<b>{item.item_code}</b>is available in Warehouse:  <b>{wh}</b> with  Qty: <b>{qty}</b>")
+        if not item.s_warehouse:
+            continue
 
-                    # Build and throw message
-                    if stock_info:
-                        stock_message = "<br>".join(stock_info)
-                        frappe.throw(
-                            f"❌ The selected warehouse <b>{item.s_warehouse}</b> is a <b>Group Warehouse</b> for item <b>{item.item_code}</b>.<br><br>"
-                            f"Here are the child warehouses under it with available stock:<br><br>{stock_message}"
-                        )
-                    else:
-                        frappe.throw(
-                            f"❌ The selected warehouse <b>{item.s_warehouse}</b> is a <b>Group Warehouse</b> for item <b>{item.item_code}</b>.<br><br>"
-                            "❌ No child warehouses currently have available stock for this item."
-                        )
+        is_group = frappe.db.get_value("Warehouse", item.s_warehouse, "is_group")
+
+        if not is_group:
+            continue
+
+        # Get child warehouses under the group
+        lft, rgt = frappe.db.get_value("Warehouse", item.s_warehouse, ["lft", "rgt"])
+        child_warehouses = frappe.get_all(
+            "Warehouse",
+            filters={"lft": [">", lft], "rgt": ["<", rgt]},
+            pluck="name"
+        )
+
+        # Collect warehouses that have stock
+        warehouses_with_stock = []
+        for wh in child_warehouses:
+            qty = frappe.db.get_value(
+                "Bin",
+                {"item_code": item.item_code, "warehouse": wh},
+                "actual_qty"
+            )
+            if qty and qty > 0:
+                warehouses_with_stock.append((wh, qty))
+
+        # ------------------------
+        # CASE 1: NO STOCK FOUND
+        # ------------------------
+        if not warehouses_with_stock:
+            frappe.throw(
+                f"❌ The selected warehouse <b>{item.s_warehouse}</b> is a "
+                f"<b>Group Warehouse</b> for item <b>{item.item_code}</b>.<br><br>"
+                "❌ No child warehouses currently have available stock for this item."
+            )
+
+        # ------------------------
+        # CASE 2: MULTIPLE WAREHOUSES HAVE STOCK
+        # ------------------------
+        if len(warehouses_with_stock) > 1:
+            stock_details = "<br>".join(
+                [f"<b>{item.item_code}</b> is available in <b>{wh}</b> with Qty <b>{qty}</b>"
+                 for wh, qty in warehouses_with_stock]
+            )
+            frappe.throw(
+                f"❌ Multiple child warehouses under <b>{item.s_warehouse}</b> have available stock "
+                f"for item <b>{item.item_code}</b>:<br><br>{stock_details}<br><br>"
+                "Please select the correct warehouse manually."
+            )
+
+        # ------------------------
+        # CASE 3: EXACTLY ONE WAREHOUSE HAS STOCK
+        # ------------------------
+        selected_wh, selected_qty = warehouses_with_stock[0]
+
+        # Update the source warehouse safely
+        item.s_warehouse = selected_wh
+
+        frappe.msgprint(
+            f"✔ Auto-selected warehouse <b>{selected_wh}</b> for item <b>{item.item_code}</b> "
+            f"(Available Qty: <b>{selected_qty}</b>)",
+            alert=True
+        )
