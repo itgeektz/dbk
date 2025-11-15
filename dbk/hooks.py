@@ -257,3 +257,4 @@ doc_events = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+# this is to test the hook get updaed through git
