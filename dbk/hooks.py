@@ -44,6 +44,11 @@ app_license = "mit"
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+    "Material Request": "public/js/material_request.js"
+}
+
+
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -192,6 +197,12 @@ doc_events = {
 # override_whitelisted_methods = {
 # 	"frappe.desk.doctype.event.event.get_events": "dbk.event.get_events"
 # }
+
+# API endpoint for actual stock
+override_whitelisted_methods = {
+    "dbk.api.stock.get_actual_qty": "dbk.api.stock.get_actual_qty"
+}
+
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
