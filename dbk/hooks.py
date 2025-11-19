@@ -153,6 +153,9 @@ doc_events = {
         "on_update": "dbk.api.stock_entry.share_stock_entry_on_review",
         "before_submit": "dbk.api.stock_entry.check_receive_permission",
         "before_validate": "dbk.api.stock_entry.before_save",
+    },
+     "Material Request": {
+        "before_save": "dbk.api.material_request.sync_item_bin_qtys"
     }
 }
 
@@ -199,9 +202,6 @@ doc_events = {
 # }
 
 # API endpoint for actual stock
-override_whitelisted_methods = {
-    "dbk.api.stock.get_actual_qty": "dbk.api.stock.get_actual_qty"
-}
 
 #
 # each overriding function accepts a `data` argument;
