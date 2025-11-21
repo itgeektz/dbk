@@ -144,20 +144,70 @@ has_permission = {
 # Document Events
 # ---------------
 # Hook on document methods and events
-
 doc_events = {
     "Purchase Order": {
-        "autoname": "dbk.api.purchase_order.autoname"
+        "autoname": "dbk.api.purchase_order.autoname",
+        "before_submit": [
+            "dbk.api.utils.update_approver"
+        ]
     },
+
     "Stock Entry": {
-        "on_update": "dbk.api.stock_entry.share_stock_entry_on_review",
-        "before_submit": "dbk.api.stock_entry.check_receive_permission",
-        "before_validate": "dbk.api.stock_entry.before_save",
+        "on_update": [
+            "dbk.api.stock_entry.share_stock_entry_on_review"
+        ],
+        "before_validate": [
+            "dbk.api.stock_entry.before_save"
+        ],
+        "before_submit": [
+            "dbk.api.stock_entry.check_receive_permission",
+            "dbk.api.utils.update_approver",
+        ],
     },
-     "Material Request": {
-        "before_save": "dbk.api.material_request.sync_item_bin_qtys"
-    }
+
+    "Material Request": {
+        "before_save": [
+            "dbk.api.material_request.sync_item_bin_qtys"
+        ],
+        "before_submit": [
+            "dbk.api.utils.update_approver"
+        ]
+    },
+
+    "Request for Quotation": {
+        "before_submit": [
+            "dbk.api.utils.update_approver"
+        ]
+    },
+
+    "Supplier Quotation": {
+        "before_submit": [
+            "dbk.api.utils.update_approver"
+        ]
+    },
+
+    "Purchase Receipt": {
+        "before_submit": [
+            "dbk.api.utils.update_approver"
+        ]
+    },
+
+    "Purchase Invoice": {
+        "before_submit": [
+            "dbk.api.utils.update_approver"
+        ]
+    },
+
+
+    # 🔥 NEW — Workflow approval tracking
+    #"*": {
+    #    "before_save": [
+    #        "dbk.api.utils.capture_workflow_approver"
+    #    ]
+    #}
 }
+
+
 
 
 # doc_events = {
