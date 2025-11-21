@@ -198,6 +198,12 @@ doc_events = {
         ]
     },
 
+    "Supplier Quotation": {
+        "before_submit": [
+            "dbk.api.utils.update_approver"
+        ]
+    },
+
 
     # 🔥 NEW — Workflow approval tracking
     #"*": {

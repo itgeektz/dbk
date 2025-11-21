@@ -71,7 +71,7 @@ def execute(filters=None):
         # 3️⃣ Build comparison data table
         # ------------------------------
         for item in rfq_items:
-            row = {"item_name": item.item_name, "qty": item.qty}
+            row = {"sl_no": rfq_items.index(item) + 1, "item_name": item.item_name, "qty": item.qty}
 
             for sq in supplier_quotations:
                 supplier = sq.supplier_name or sq.supplier
@@ -82,8 +82,8 @@ def execute(filters=None):
                     as_dict=True
                 )
 
-                row[f"{supplier}_rate"] = sq_item.rate if sq_item else "-"
-                row[f"{supplier}_amount"] = sq_item.amount if sq_item else "-"
+                row[f"{supplier}_rate"] = format_ksh(sq_item.rate) if sq_item else "-"
+                row[f"{supplier}_amount"] = format_ksh(sq_item.amount) if sq_item else "-"
 
             data.append(row)
 
@@ -104,9 +104,9 @@ def execute(filters=None):
             ) or "Cheque after Delivery and Inspection of Goods"
 
             summary[supplier] = {
-                "subtotal": sub_total,
-                "taxes": taxes,
-                "total": total,
+                "subtotal": format_ksh(sub_total),
+                "taxes": format_ksh(taxes),
+                "total": format_ksh(total),
                 "payment_terms": payment_terms,
                 "contact_person": sq.contact_person or "",
                 "contact_number": sq.contact_mobile or ""
@@ -116,6 +116,7 @@ def execute(filters=None):
         # 5️⃣ Define columns for completeness
         # ------------------------------
         columns = [
+            {"label": "Sl No", "fieldname": "sl_no", "fieldtype": "Int", "width": 60},
             {"label": "Item", "fieldname": "item_name", "fieldtype": "Data", "width": 200},
             {"label": "Qty", "fieldname": "qty", "fieldtype": "Float", "width": 80},
         ]
@@ -124,15 +125,16 @@ def execute(filters=None):
             columns.append({
                 "label": f"{supplier} Rate",
                 "fieldname": f"{supplier}_rate",
-                "fieldtype": "Currency",
-                "width": 100
+                "fieldtype": "Data",
+                "width": 100,
+                "align": "right"
             })
-            columns.append({
-                "label": f"{supplier} Amount",
-                "fieldname": f"{supplier}_amount",
-                "fieldtype": "Currency",
-                "width": 120
-            })
+            #columns.append({
+            #    "label": f"{supplier} Amount",
+            #    "fieldname": f"{supplier}_amount",
+            #    "fieldtype": "Currency",
+            #    "width": 120
+            #})
 
         # ------------------------------
         # ✅ Return final structured data
@@ -143,77 +145,19 @@ def execute(filters=None):
         frappe.log_error(frappe.get_traceback(), "DBK Supplier Comparisson Report Error")
         return [], [], {}, None
 
-"""
-import frappe
+def format_ksh(value):
+    """Format values with thousand separators and convert millions."""
+    if value is None or value == "-" or value == "":
+        return "-"
 
-def execute(filters=None):
-    if not filters.get("request_for_quotation"):
-        frappe.throw("Please select a Request for Quotation.")
+    try:
+        value = float(value)
+    except:
+        return "-"
 
-    rfq_name = filters.get("request_for_quotation")
+    # Convert values >= 1 million to X.YZ M
+    if abs(value) >= 1_000_000:
+        return f"{value/1_000_000:.2f}M"
 
-    # Get linked Supplier Quotations
-    quotations = frappe.get_all(
-        "Supplier Quotation",
-        filters={"request_for_quotation": rfq_name},
-        fields=["name", "supplier"]
-    )
-
-    if not quotations:
-        frappe.msgprint("No Supplier Quotations found for this RFQ.")
-        return [], []
-
-    # Deduplicate suppliers (avoid repeats)
-    suppliers = sorted(list(set([q.supplier for q in quotations])))
-
-    # Get item data
-    items = frappe.get_all(
-        "Supplier Quotation Item",
-        filters={"parent": ["in", [q.name for q in quotations]]},
-        fields=["parent", "item_code", "item_name", "qty", "rate"]
-    )
-
-    # Build structured comparison
-    item_dict = {}
-    for row in items:
-        supplier = next(q.supplier for q in quotations if q.name == row.parent)
-        if row.item_name not in item_dict:
-            item_dict[row.item_name] = {
-                "item_code": row.item_code,
-                "qty": row.qty,
-                "rates": {}
-            }
-        item_dict[row.item_name]["rates"][supplier] = row.rate
-
-    # Prepare final data
-    data = []
-    for item_name, info in item_dict.items():
-        row = {
-            "item_name": item_name,
-            "qty": info["qty"]
-        }
-        for supplier in suppliers:
-            rate = info["rates"].get(supplier)
-            amount = rate * info["qty"] if rate else None
-            row[f"{supplier}_rate"] = rate
-            row[f"{supplier}_amount"] = amount
-        data.append(row)
-
-    # Prepare columns (deduplicated)
-    columns = [
-        {"label": "Item", "fieldname": "item_name", "fieldtype": "Data", "width": 180},
-        {"label": "Quantity", "fieldname": "qty", "fieldtype": "Float", "width": 100},
-    ]
-
-    for supplier in suppliers:
-        columns.extend([
-            {"label": f"{supplier} (Rate)", "fieldname": f"{supplier}_rate", "fieldtype": "Currency", "width": 120},
-            {"label": f"{supplier} (Amount)", "fieldname": f"{supplier}_amount", "fieldtype": "Currency", "width": 120},
-        ])
-
-    # Store unique suppliers in message for the JS print section
-    frappe.local.response["supplier_list"] = suppliers
-
-    return columns, data
-
-"""
+    # Normal KSh format with comma separators
+    return f"{value:,.2f}"
