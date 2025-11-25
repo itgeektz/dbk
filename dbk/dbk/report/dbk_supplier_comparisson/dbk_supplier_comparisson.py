@@ -43,7 +43,7 @@ def execute(filters=None):
 
     filters = frappe._dict(filters or {})    
     rfq = filters.get("request_for_quotation")
-
+    rfq_doc = frappe.get_doc("Request for Quotation", rfq) if rfq else None
     if not rfq:
         return [], [], {}, None
 
@@ -166,7 +166,8 @@ def execute(filters=None):
                 "total_raw": total,
                 "payment_terms": payment_terms,
                 "contact_person": sq.contact_person or "",
-                "contact_number": sq.contact_mobile or ""
+                "contact_number": sq.contact_mobile or "",
+                "justification": rfq_doc.justification if rfq_doc else ""
             }
 
         # 5️⃣ Define columns for completeness

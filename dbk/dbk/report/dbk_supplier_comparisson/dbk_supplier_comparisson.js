@@ -155,6 +155,7 @@ let summaryHtml = `<table>
 const fields = ["subtotal", "taxes", "total","payment_terms", "contact_person", "contact_number"];
 const labels = ["Sub-total", "Taxes (if any)", "TOTAL", "Terms of Payment", "Contact Person", "Contact Number"];
 
+
 labels.forEach((label, idx) => {
 
   // Determine alignment based on column index
@@ -171,6 +172,22 @@ labels.forEach((label, idx) => {
     </tr>`;
 });
 
+// Get justification from first supplier (it's the same for all)
+const firstSupplier = supplierNames[0];
+const justification = summary[firstSupplier]?.justification || "";
+
+// Add as a row in the summary table
+if (justification && justification.trim()) {
+  const escapedJustification = $('<div>').text(justification).html();  // ✅ Define it here
+  
+  summaryHtml += `
+    <tr>
+      <td style="text-align:center;"><strong>Committee's Recommendation and Conclusion:</strong></td>
+      <td colspan="${supplierNames.length}" style="text-align:left; padding: 10px;">
+        ${escapedJustification}
+      </td>
+    </tr>`;
+}
 summaryHtml += `</table>`;
 
 
@@ -230,7 +247,8 @@ summaryHtml += `</table>`;
 
 
       <div style="margin-top:30px;">
-        <p><strong>Justification:</strong> ${lowestBidderText} has offered lowest prices.</p>
+        <p><strong>System's Analysis:</strong> ${lowestBidderText} has offered lowest prices.</p>
+        
         <p>The above conclusions are correct and we testify to that:</p>
         <table>
           <tr>
