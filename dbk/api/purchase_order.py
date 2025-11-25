@@ -4,7 +4,7 @@ from frappe.utils import now_datetime
 
 def autoname(doc, method=None):
     # safe project text (no spaces, no dots)
-    project = (doc.project or "NA").strip().replace(" ", "-").replace(".", "-")
+    project = (doc.project or "GE").strip().replace(" ", "-").replace(".", "-")
 
     # month and year two-digit
     dt = now_datetime()

@@ -139,40 +139,26 @@ async function printComparison(report) {
       const rate = row[`${supplier}_rate`];
       const formatted = row[`${supplier}_rate_formatted`] || "-";
       const isMin = rate !== null && row.min_rate !== null && Math.abs(rate - row.min_rate) < 0.01;
-      htmlRows += `<td style="text-align:right;" class="${isMin ? "highlight-min" : ""}">${formatted}</td>`;
+      htmlRows += `<td class="${isMin ? "highlight-min" : ""}">${formatted}</td>`;
     });
     
     htmlRows += "</tr>";
   });
 
-  // Summary totals 
-let summaryHtml = `<table>
-  <tr>
-    <th style="text-align:center;">Details</th>
-    ${supplierNames.map(s => `<th style="text-align:center;">${s}</th>`).join("")}
-  </tr>`;
+  // Summary totals
+  let summaryHtml = `<table><tr><th>Details</th>${supplierNames.map(s => `<th>${s}</th>`).join("")}</tr>`;
+  const fields = ["subtotal", "taxes", "total", "payment_terms", "contact_person", "contact_number"];
+  const labels = ["Sub-total", "Taxes (if any)", "TOTAL", "Terms of Payment", "Contact Person", "Contact Number"];
 
-const fields = ["subtotal", "taxes", "total","payment_terms", "contact_person", "contact_number"];
-const labels = ["Sub-total", "Taxes (if any)", "TOTAL", "Terms of Payment", "Contact Person", "Contact Number"];
-
-labels.forEach((label, idx) => {
-
-  // Determine alignment based on column index
-  let alignment = idx < 3 ? "right" : "left";
-
-  summaryHtml += `
-    <tr>
-      <td style="text-align:center;"><strong>${label}</strong></td>
-      ${supplierNames.map(name => {
-        const info = summary[name] || {};
-        const field = fields[idx];
-        return `<td style="text-align:${alignment};">${info?.[field] || "-"}</td>`;
-      }).join("")}
-    </tr>`;
-});
-
-summaryHtml += `</table>`;
-
+  labels.forEach((label, idx) => {
+    summaryHtml += `<tr><td><strong>${label}</strong></td>`;
+    supplierNames.forEach(name => {
+      const info = summary[name] || {};
+      const field = fields[idx];
+      summaryHtml += `<td>${info?.[field] || "-"}</td>`;
+    });
+    summaryHtml += "</tr>";
+  });
 
   summaryHtml += `<tr><td><strong>Delivery Schedule</strong></td><td colspan="${supplierNames.length}">${schedule_date || "-"}</td></tr>`;
   summaryHtml += "</table>";
@@ -186,8 +172,7 @@ summaryHtml += `</table>`;
         body { font-family: Arial, sans-serif; margin: 25px; font-size: 13px; }
         h2, h4 { text-align: center; margin: 0; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { border: 1px solid #000; padding: 5px; text-align: center; }
-        td { border: 1px solid #000; padding: 5px;}
+        th, td { border: 1px solid #000; padding: 5px; text-align: right; }
         th { background: #f8f8f8; font-weight: 600; }
         td:first-child { text-align: left; }
         .highlight-min { background-color: #d4edda; font-weight: bold; }
@@ -228,9 +213,8 @@ summaryHtml += `</table>`;
 
       ${summaryHtml}
 
-
       <div style="margin-top:30px;">
-        <p><strong>Justification:</strong> ${lowestBidderText} has offered lowest prices.</p>
+        <p><strong>Justification:</strong> ${lowestBidderText} is preferred for having offered lowest prices.</p>
         <p>The above conclusions are correct and we testify to that:</p>
         <table>
           <tr>

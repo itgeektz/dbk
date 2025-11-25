@@ -27,7 +27,9 @@ app_license = "mit"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/dbk/css/dbk.css"
 # app_include_js = "/assets/dbk/js/dbk.js"
-
+#app_include_js = [
+#    "/assets/dbk/js/request_for_quotation_custom.js"
+#]
 # include js, css files in header of web template
 # web_include_css = "/assets/dbk/css/dbk.css"
 # web_include_js = "/assets/dbk/js/dbk.js"
@@ -45,7 +47,9 @@ app_license = "mit"
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
-    "Material Request": "public/js/material_request.js"
+    "Material Request": "public/js/material_request.js",
+    #"Request for Quotation": "dbk/public/js/request_for_quotation_custom.js"
+    
 }
 
 
