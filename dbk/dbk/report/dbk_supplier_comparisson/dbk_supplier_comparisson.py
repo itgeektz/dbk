@@ -55,7 +55,6 @@ def execute(filters=None):
         rfq_field = get_rfq_field_name()
         
         # 1️⃣ Get all supplier quotations linked to this RFQ
-        # Use SQL to find through items since the link is in child table
         all_quotations = frappe.db.sql("""
             SELECT DISTINCT 
                 sq.name,
@@ -71,6 +70,7 @@ def execute(filters=None):
             FROM `tabSupplier Quotation` sq
             INNER JOIN `tabSupplier Quotation Item` sqi ON sqi.parent = sq.name
             WHERE sqi.{} = %s
+            AND sq.docstatus = 1
             ORDER BY sq.transaction_date DESC
         """.format(rfq_field), (rfq,), as_dict=True)
 
@@ -91,7 +91,7 @@ def execute(filters=None):
         rfq_items = frappe.get_all(
             "Request for Quotation Item",
             filters={"parent": rfq},
-            fields=["item_code", "item_name", "qty", "schedule_date"],
+            fields=["item_code", "item_name", "qty", "schedule_date", "uom"],
             order_by="idx"
         )
 
@@ -104,7 +104,8 @@ def execute(filters=None):
                 "sl_no": rfq_items.index(item) + 1, 
                 "item_code": item.item_code,
                 "item_name": item.item_name, 
-                "qty": item.qty
+                "qty": item.qty,
+                "uom": item.uom
             }
 
             rates = []  # Track all rates for this item
@@ -136,8 +137,23 @@ def execute(filters=None):
             if rates:
                 min_rate = min(rates)
                 row["min_rate"] = min_rate
+                
+                # Mark which suppliers have the lowest rate
+                for sq in supplier_quotations:
+                    supplier = sq.supplier_name or sq.supplier
+                    rate = row.get(f"{supplier}_rate")
+                    
+                    # Check if this supplier has the lowest rate (with tolerance)
+                    if rate is not None and abs(rate - min_rate) < 0.01:
+                        row[f"{supplier}_is_lowest"] = True
+                    else:
+                        row[f"{supplier}_is_lowest"] = False
             else:
                 row["min_rate"] = None
+                # Mark all as not lowest if no rates
+                for sq in supplier_quotations:
+                    supplier = sq.supplier_name or sq.supplier
+                    row[f"{supplier}_is_lowest"] = False
 
             data.append(row)
 
@@ -212,9 +228,128 @@ def format_ksh(value):
 
 
 @frappe.whitelist()
-def create_purchase_orders(rfq, supplier_selections):
+def create_purchase_orders_from_meeting(meeting_name):
     """
-    Create Purchase Orders from selected suppliers
+    Create Purchase Orders from RFQ Meeting
+    This is triggered when RFQ Meeting is submitted
+    """
+    meeting = frappe.get_doc("RFQ Meeting", meeting_name)
+    
+    if not meeting.item_selections:
+        frappe.throw("No items selected in meeting")
+    
+    # Group items by supplier
+    supplier_items = {}
+    for item in meeting.item_selections:
+        if not item.selected_supplier:
+            continue
+        
+        if item.selected_supplier not in supplier_items:
+            supplier_items[item.selected_supplier] = []
+        
+        supplier_items[item.selected_supplier].append(item)
+    
+    created_pos = []
+    
+    for supplier_name, items in supplier_items.items():
+        po = create_purchase_order_for_supplier(
+            meeting.request_for_quotation,
+            supplier_name,
+            items,
+            meeting.company,
+            meeting.required_date,
+            meeting.project,
+            meeting.name
+        )
+        
+        if po:
+            created_pos.append(po.name)
+    
+    return created_pos
+
+
+def create_purchase_order_for_supplier(rfq, supplier_name, items, company, required_date, project, meeting_ref=None):
+    """Create a single PO for a supplier with selected items"""
+    
+    # Find supplier quotation
+    rfq_field = get_rfq_field_name()
+    sq = frappe.db.sql("""
+        SELECT sq.name, sq.supplier, sq.supplier_name
+        FROM `tabSupplier Quotation` sq
+        INNER JOIN `tabSupplier Quotation Item` sqi ON sqi.parent = sq.name
+        WHERE sqi.{} = %s 
+        AND (sq.supplier_name = %s OR sq.supplier = %s)
+        AND sq.docstatus = 1
+        LIMIT 1
+    """.format(rfq_field), (rfq, supplier_name, supplier_name), as_dict=True)
+    
+    if not sq:
+        frappe.msgprint(f"No supplier quotation found for {supplier_name}")
+        return None
+    
+    # Create Purchase Order
+    po = frappe.new_doc("Purchase Order")
+    po.supplier = sq[0].supplier
+    po.company = company
+    po.schedule_date = required_date
+    
+    # Set project - ensure it's not None or empty
+    if project and str(project).strip():
+        po.project = str(project).strip()
+    else:
+        po.project = "GE"  # Default fallback
+    
+    # Link to meeting if provided
+    if meeting_ref and frappe.db.exists("Custom Field", {"dt": "Purchase Order", "fieldname": "rfq_meeting"}):
+        po.rfq_meeting = meeting_ref
+    
+    # Add items
+    items_added = 0
+    for item in items:
+        # Get item details from supplier quotation
+        sq_item = frappe.db.get_value(
+            "Supplier Quotation Item",
+            {"parent": sq[0].name, "item_code": item.item_code},
+            ["rate", "warehouse", "description", "uom"],
+            as_dict=True
+        )
+        
+        if sq_item:
+            warehouse = sq_item.warehouse
+            if not warehouse:
+                warehouse = frappe.db.get_value(
+                    "Warehouse",
+                    {"company": company, "is_group": 0},
+                    "name"
+                )
+            
+            po.append("items", {
+                "item_code": item.item_code,
+                "item_name": item.item_name,
+                "description": sq_item.description or item.item_name,
+                "qty": item.qty,
+                "rate": sq_item.rate,
+                "uom": sq_item.uom or item.uom,
+                "warehouse": warehouse,
+                "schedule_date": required_date,
+                "project": po.project
+            })
+            items_added += 1
+    
+    if items_added == 0:
+        frappe.msgprint(_(f"No items found in Supplier Quotation for {supplier_name}. Skipping PO creation."))
+        return None
+    
+    po.insert()
+    frappe.db.commit()
+    
+    return po
+
+
+@frappe.whitelist()
+def create_purchase_orders(rfq, supplier_selections, project=None, required_date=None):
+    """
+    Create Purchase Orders from selected suppliers (legacy function for report)
     supplier_selections: JSON string like {"item_code": "supplier_name", ...}
     """
     if isinstance(supplier_selections, str):
@@ -232,95 +367,33 @@ def create_purchase_orders(rfq, supplier_selections):
     
     # Get RFQ details
     rfq_doc = frappe.get_doc("Request for Quotation", rfq)
+    company = rfq_doc.company
+    
+    # Use provided values or defaults from RFQ
+    if not project:
+        project = getattr(rfq_doc, 'project', 'GE')
+    if not required_date:
+        required_date = getattr(rfq_doc, 'schedule_date', frappe.utils.today())
     
     for supplier_name, item_codes in supplier_items.items():
-        # Find the supplier quotation - try different field names
-        sq = None
-        
-        # First try with opportunity field (common link field)
-        sq = frappe.db.get_value(
-            "Supplier Quotation",
-            {"opportunity": rfq, "supplier_name": supplier_name},
-            ["name", "supplier", "supplier_name"],
-            as_dict=True
-        )
-        
-        # If not found, search using SQL to find the link
-        if not sq:
-            sq_list = frappe.db.sql("""
-                SELECT sq.name, sq.supplier, sq.supplier_name
-                FROM `tabSupplier Quotation` sq
-                INNER JOIN `tabSupplier Quotation Item` sqi ON sqi.parent = sq.name
-                WHERE sqi.request_for_quotation = %s 
-                AND sq.supplier_name = %s
-                LIMIT 1
-            """, (rfq, supplier_name), as_dict=True)
-            
-            if sq_list:
-                sq = sq_list[0]
-        
-        if not sq:
-            continue
-        
-        # Create Purchase Order
-        po = frappe.new_doc("Purchase Order")
-        po.supplier = sq.supplier
-        po.schedule_date = rfq_doc.schedule_date if hasattr(rfq_doc, 'schedule_date') else frappe.utils.today()
-        po.company = rfq_doc.company if hasattr(rfq_doc, 'company') else frappe.defaults.get_user_default("Company")
-        project_value = None
-        if hasattr(rfq_doc, 'project'):
-            project_value = rfq_doc.project
-        
-        # Set project - never allow None or empty string
-        if project_value and str(project_value).strip():
-            po.project = str(project_value).strip()
-        else:
-            po.project = "GE"
-        # Add items
-        items_added = 0
+        # Get item details for this supplier
+        items = []
         for item_code in item_codes:
-            # Get item details from supplier quotation
-            sq_item = frappe.db.get_value(
-                "Supplier Quotation Item",
-                {"parent": sq.name, "item_code": item_code},
-                ["item_code", "item_name", "qty", "rate", "uom", "warehouse", "description"],
+            item = frappe.db.get_value(
+                "Request for Quotation Item",
+                {"parent": rfq, "item_code": item_code},
+                ["item_code", "item_name", "qty", "uom"],
                 as_dict=True
             )
-            
-            if sq_item:
-                # Get default warehouse if not set
-                warehouse = sq_item.warehouse
-                if not warehouse:
-                    warehouse = frappe.db.get_value(
-                        "Warehouse",
-                        {"company": po.company, "is_group": 0},
-                        "name"
-                    )
-                
-                po.append("items", {
-                    "item_code": sq_item.item_code,
-                    "item_name": sq_item.item_name,
-                    "description": sq_item.description or sq_item.item_name,
-                    "qty": sq_item.qty,
-                    "rate": sq_item.rate,
-                    "uom": sq_item.uom,
-                    "warehouse": warehouse,
-                    "schedule_date": po.schedule_date,
-                    "project": po.project  # Set project at item level too
-                })
-                items_added += 1
+            if item:
+                items.append(item)
         
-        if items_added == 0:
-            frappe.msgprint(_("No items found in Supplier Quotation for {0}. Skipping PO creation.").format(supplier_name))
-            continue
+        po = create_purchase_order_for_supplier(
+            rfq, supplier_name, items, company, required_date, project
+        )
         
-        # Calculate taxes if template exists
-        if po.taxes_and_charges:
-            po.set_missing_values()
-        
-        po.insert()
-        frappe.db.commit()
-        created_pos.append(po.name)
+        if po:
+            created_pos.append(po.name)
     
     return created_pos
 
@@ -362,3 +435,105 @@ def get_lowest_suppliers(rfq):
         "ties": ties,
         "summary": summary
     }
+
+
+@frappe.whitelist()
+def get_comparison_data_for_print(rfq):
+    """
+    Get formatted comparison data for print formats
+    Returns data suitable for Jinja templates
+    """
+    columns, data, summary, schedule_date = execute({"request_for_quotation": rfq})
+    
+    if not data:
+        return None
+    
+    # Extract supplier names
+    supplier_names = list(summary.keys())
+    
+    # Determine lowest bidders
+    lowest_bidders = set()
+    for row in data:
+        if row.get("min_rate") is not None:
+            for supplier in supplier_names:
+                rate = row.get(f"{supplier}_rate")
+                if rate is not None and abs(rate - row["min_rate"]) < 0.01:
+                    lowest_bidders.add(supplier)
+    
+    return {
+        "suppliers": supplier_names,
+        "items": data,
+        "summary": summary,
+        "schedule_date": schedule_date,
+        "lowest_bidders": list(lowest_bidders),
+        "rfq": rfq
+    }
+
+
+@frappe.whitelist()
+def get_default_committee_members():
+    """
+    Get default committee members from settings
+    Returns list of {member_name, position}
+    """
+    try:
+        settings = frappe.get_single("RFQ Committee Settings")
+        
+        if settings and settings.default_committee_members:
+            # Only return active members
+            return [
+                {
+                    "member_name": member.member_name,
+                    "position": member.position
+                }
+                for member in settings.default_committee_members
+                if member.is_active
+            ]
+        else:
+            # Fallback to hardcoded defaults if settings not configured
+            return [
+                {"member_name": "Francis Mbiu", "position": "Administrator"},
+                {"member_name": "Silas Njiru", "position": "Academic Dean"},
+                {"member_name": "Judy Wamalwa", "position": "Supply & Logistics"}
+            ]
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get Default Committee Members Error")
+        # Return hardcoded fallback on error
+        return [
+            {"member_name": "Francis Mbiu", "position": "Administrator"},
+            {"member_name": "Silas Njiru", "position": "Academic Dean"},
+            {"member_name": "Judy Wamalwa", "position": "Supply & Logistics"}
+        ]
+
+
+def clean_empty_html(html_content):
+    """
+    Clean empty HTML markup from text editor fields
+    Returns None if content is empty, otherwise returns original content
+    """
+    if not html_content:
+        return None
+    
+    # Common empty patterns from Quill editor
+    empty_patterns = [
+        '<div class="ql-editor read-mode"><p><br></p></div>',
+        '<div class="ql-editor"><p><br></p></div>',
+        '<p><br></p>',
+        '<p></p>',
+        '<div></div>',
+        '<br>',
+        '&nbsp;'
+    ]
+    
+    html_stripped = html_content.strip()
+    
+    # Check exact matches
+    if html_stripped in empty_patterns:
+        return None
+    
+    # Strip all HTML tags and check for actual text
+    import re
+    text_only = re.sub(r'<[^>]*>', '', html_stripped)
+    text_only = text_only.replace('&nbsp;', '').strip()
+    
+    return html_content if text_only else None

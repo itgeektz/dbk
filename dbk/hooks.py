@@ -48,7 +48,6 @@ app_license = "mit"
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
     "Material Request": "public/js/material_request.js",
-    #"Request for Quotation": "dbk/public/js/request_for_quotation_custom.js"
     
 }
 

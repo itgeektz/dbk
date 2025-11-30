@@ -1,0 +1,180 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:RFQ-MTG-{YYYY}-{#####}",
+ "creation": "2025-11-28 10:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "request_for_quotation",
+  "event",
+  "column_break_2",
+  "meeting_date",
+  "meeting_time",
+  "section_break_5",
+  "project",
+  "required_date",
+  "column_break_7",
+  "company",
+  "section_break_8",
+  "agenda",
+  "justification",
+  "committee_decision",
+  "section_break_11",
+  "committee_members",
+  "section_break_13",
+  "item_selections",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "request_for_quotation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Request for Quotation",
+   "options": "Request for Quotation",
+   "reqd": 1
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Link",
+   "label": "Event",
+   "options": "Event"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "meeting_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Meeting Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "meeting_time",
+   "fieldtype": "Time",
+   "label": "Meeting Time"
+  },
+  {
+   "fieldname": "section_break_5",
+   "fieldtype": "Section Break",
+   "label": "Purchase Order Details"
+  },
+  {
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "label": "Project",
+   "options": "Project",
+   "reqd": 1
+  },
+  {
+   "fieldname": "required_date",
+   "fieldtype": "Date",
+   "label": "Required By Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_8",
+   "fieldtype": "Section Break",
+   "label": "Meeting Details"
+  },
+  {
+   "fieldname": "agenda",
+   "fieldtype": "Small Text",
+   "label": "Agenda"
+  },
+  {
+   "fieldname": "justification",
+   "fieldtype": "Text",
+   "label": "Justification"
+  },
+  {
+   "fieldname": "committee_decision",
+   "fieldtype": "Text Editor",
+   "label": "Committee Decision"
+  },
+  {
+   "fieldname": "section_break_11",
+   "fieldtype": "Section Break",
+   "label": "Committee Members"
+  },
+  {
+   "fieldname": "committee_members",
+   "fieldtype": "Table",
+   "label": "Committee Members",
+   "options": "RFQ Meeting Member"
+  },
+  {
+   "fieldname": "section_break_13",
+   "fieldtype": "Section Break",
+   "label": "Item Supplier Selection"
+  },
+  {
+   "fieldname": "item_selections",
+   "fieldtype": "Table",
+   "label": "Item Selections",
+   "options": "RFQ Meeting Item Selection"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "RFQ Meeting",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2025-11-28 10:00:00",
+ "modified_by": "Administrator",
+ "module": "DBK",
+ "name": "RFQ Meeting",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Purchase User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
