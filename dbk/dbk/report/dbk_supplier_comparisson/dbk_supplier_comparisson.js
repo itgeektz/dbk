@@ -45,17 +45,31 @@ frappe.query_reports["DBK Supplier Comparisson"] = {
   formatter: function(value, row, column, data, default_formatter) {
     value = default_formatter(value, row, column, data);
     
-    // Highlight cells with minimum rate
+    // Highlight cells with minimum rate (based on comparison_rate, not display rate)
     if (column.fieldname.endsWith("_rate_formatted") && data) {
       const supplier = column.fieldname.replace("_rate_formatted", "");
-      const rate_field = supplier + "_rate";
+      const comparison_rate_field = supplier + "_comparison_rate";
+      const is_lowest_field = supplier + "_is_lowest";
       
-      if (data[rate_field] !== null && data[rate_field] !== undefined && 
-          data.min_rate !== null && data.min_rate !== undefined) {
+      // Use pre-calculated is_lowest flag from Python
+      if (data[is_lowest_field] === true) {
+        value = `<div style="background-color: #d4edda; font-weight: bold; padding: 4px;">${value}</div>`;
+      }
+      
+      // Add tax status indicator if available
+      const tax_status_field = supplier + "_tax_status";
+      const tax_status = data[tax_status_field];
+      
+      if (tax_status) {
+        let indicator = '';
+        if (tax_status === 'Tax Included') {
+          indicator = '<br><small style="color: #666;">(Incl. Tax)</small>';
+        } else if (tax_status === 'Tax Exempt') {
+          indicator = '<br><small style="color: #28a745;">(Tax Exempt)</small>';
+        }
         
-        // Use a small epsilon for floating point comparison
-        if (Math.abs(data[rate_field] - data.min_rate) < 0.01) {
-          value = `<div style="background-color: #d4edda; font-weight: bold; padding: 4px;">${value}</div>`;
+        if (indicator) {
+          value = value.replace('</div>', indicator + '</div>');
         }
       }
     }
@@ -71,7 +85,7 @@ frappe.query_reports["DBK Supplier Comparisson"] = {
 
     // Button: Create Meeting & POs
     report.page.add_inner_button(__("Create Meeting"), async function () {
-      await createMeetingAndPOs(report);
+      await createMeeting(report);
     }, __("Actions"));
 
     // Button: Quick Create POs (Legacy)
@@ -130,7 +144,7 @@ async function printSimpleComparison(report) {
 // ============================================
 // Create Meeting & Purchase Orders
 // ============================================
-async function createMeetingAndPOs(report) {
+async function createMeeting(report) {
   const filters = frappe.query_report.get_values() || {};
   if (!filters.request_for_quotation) {
     frappe.msgprint("Please select a Request for Quotation first.");
@@ -243,14 +257,12 @@ async function createMeetingAndPOs(report) {
       fieldtype: "Small Text",
       default: "Review of the Requests sent and the Quotation received from various suppliers."
     },
-    /*
     {
       fieldname: "justification",
       label: __("Justification"),
       fieldtype: "Text Editor",
-      default: rfq.justification || ""
+      default: rfq.justification && rfq.justification.trim() && !isEmptyHtml(rfq.justification) ? rfq.justification : ""
     },
-    */
     {
       fieldtype: "Section Break",
       label: __("Committee Members (Optional)")
@@ -268,7 +280,7 @@ async function createMeetingAndPOs(report) {
     title: __("Create Meeting and Purchase Orders"),
     fields: fields,
     size: "large",
-    primary_action_label: __("Create Meeting"),
+    primary_action_label: __("Create Meeting & POs"),
     primary_action: async function(values) {
       d.hide();
       await createMeetingDocument(values, data, filters.request_for_quotation);
@@ -319,6 +331,12 @@ async function createMeetingDocument(values, data, rfq) {
       }
     }
 
+    // Clean justification - remove empty HTML markup
+    let justification = values.justification || "";
+    if (isEmptyHtml(justification)) {
+      justification = "";
+    }
+
     // Create meeting
     const meeting = await frappe.call({
       method: "frappe.client.insert",
@@ -332,7 +350,7 @@ async function createMeetingDocument(values, data, rfq) {
           project: values.project,
           required_date: values.required_date,
           agenda: values.agenda,
-          // justification: values.justification,
+          justification: justification,
           committee_members: committee_members,
           item_selections: item_selections
         }
@@ -346,14 +364,14 @@ async function createMeetingDocument(values, data, rfq) {
       indicator: "green"
     }, 5);
 
-    // Ask if user wants to submit immediately
+    // Ask if user wants to show meeting document immediately
     frappe.confirm(
-      __("Meeting created."),
+      __("Meeting created. Do you want to go to the RFQ Meeting Document? Press <strong>Yes</strong> to go, or press <strong>No</strong> to stay on the same page."),
       async () => {
-        // User chose not to submit, just open the meeting
+        // User chose to go to the meeting document
         frappe.set_route("Form", "RFQ Meeting", meeting_name);
       }
-    ); /*=> {
+      /*{
         try {
           await frappe.call({
             method: "frappe.client.submit",
@@ -377,8 +395,8 @@ async function createMeetingDocument(values, data, rfq) {
       () => {
         // User chose not to submit, just open the meeting
         frappe.set_route("Form", "RFQ Meeting", meeting_name);
-      }
-    ); */
+      } */
+    );
 
   } catch (error) {
     frappe.msgprint(__("Error creating meeting: " + error.message));
@@ -622,4 +640,44 @@ async function proceedWithPurchaseOrders(selections, rfq, project, required_date
   } catch (error) {
     frappe.msgprint(__("Error creating Purchase Orders: " + error.message));
   }
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Check if HTML content is empty (only contains Quill editor markup with no actual text)
+ * @param {string} html - HTML string to check
+ * @returns {boolean} - True if empty or only whitespace/empty markup
+ */
+function isEmptyHtml(html) {
+  if (!html || html.trim() === '') {
+    return true;
+  }
+  
+  // Remove common Quill editor empty states
+  const emptyPatterns = [
+    '<div class="ql-editor read-mode"><p><br></p></div>',
+    '<div class="ql-editor"><p><br></p></div>',
+    '<p><br></p>',
+    '<p></p>',
+    '<div></div>',
+    '<br>',
+    '&nbsp;'
+  ];
+  
+  let cleanHtml = html.trim();
+  
+  // Check exact matches first
+  for (const pattern of emptyPatterns) {
+    if (cleanHtml === pattern) {
+      return true;
+    }
+  }
+  
+  // Strip all HTML tags and check if any text remains
+  const textOnly = cleanHtml.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
+  
+  return textOnly.length === 0;
 }

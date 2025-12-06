@@ -98,7 +98,7 @@ def execute(filters=None):
         if rfq_items:
             schedule_date = rfq_items[0].schedule_date
 
-        # 3️⃣ Build comparison data table
+        # 3️⃣ Build comparison data table - USE NET_RATE
         for item in rfq_items:
             row = {
                 "sl_no": rfq_items.index(item) + 1, 
@@ -108,49 +108,55 @@ def execute(filters=None):
                 "uom": item.uom
             }
 
-            rates = []  # Track all rates for this item
+            comparison_rates = []  # Track net_rate for comparison
             
             for sq in supplier_quotations:
                 supplier = sq.supplier_name or sq.supplier
+                
+                # Get item details from supplier quotation - PRIORITIZE net_rate
                 sq_item = frappe.db.get_value(
                     "Supplier Quotation Item",
                     {"parent": sq.name, "item_code": item.item_code},
-                    ["rate", "amount"],
+                    ["rate", "amount", "net_rate", "net_amount"],
                     as_dict=True
                 )
 
-                if sq_item and sq_item.rate:
-                    rate_value = float(sq_item.rate)
-                    amount_value = float(sq_item.amount) if sq_item.amount else 0.0
+                if sq_item and (sq_item.net_rate or sq_item.rate):
+                    # CRITICAL: Use net_rate if available, otherwise fall back to rate
+                    net_rate = float(sq_item.net_rate) if sq_item.net_rate else float(sq_item.rate)
+                    display_rate = float(sq_item.net_rate) if sq_item.net_rate else float(sq_item.rate)
                     
-                    row[f"{supplier}_rate"] = rate_value
-                    row[f"{supplier}_rate_formatted"] = format_ksh(rate_value)
-                    row[f"{supplier}_amount"] = amount_value
+                    # Store both rates
+                    row[f"{supplier}_rate"] = display_rate  # For display (may include tax)
+                    row[f"{supplier}_rate_formatted"] = format_ksh(display_rate)
+                    row[f"{supplier}_net_rate"] = net_rate  # For comparison (tax-excluded)
+                    row[f"{supplier}_amount"] = float(sq_item.amount) if sq_item.amount else 0.0
                     
-                    rates.append(rate_value)
+                    # Add net_rate to comparison list
+                    comparison_rates.append(net_rate)
                 else:
                     row[f"{supplier}_rate"] = None
                     row[f"{supplier}_rate_formatted"] = "-"
+                    row[f"{supplier}_net_rate"] = None
                     row[f"{supplier}_amount"] = None
 
-            # Find minimum rate for highlighting
-            if rates:
-                min_rate = min(rates)
-                row["min_rate"] = min_rate
+            # Find minimum net_rate (tax-excluded comparison)
+            if comparison_rates:
+                min_net_rate = min(comparison_rates)
+                row["min_rate"] = min_net_rate
                 
-                # Mark which suppliers have the lowest rate
+                # Mark which suppliers have the lowest net_rate
                 for sq in supplier_quotations:
                     supplier = sq.supplier_name or sq.supplier
-                    rate = row.get(f"{supplier}_rate")
+                    net_rate = row.get(f"{supplier}_net_rate")
                     
-                    # Check if this supplier has the lowest rate (with tolerance)
-                    if rate is not None and abs(rate - min_rate) < 0.01:
+                    # Check if this supplier has the lowest net_rate (with tolerance)
+                    if net_rate is not None and abs(net_rate - min_net_rate) < 0.01:
                         row[f"{supplier}_is_lowest"] = True
                     else:
                         row[f"{supplier}_is_lowest"] = False
             else:
                 row["min_rate"] = None
-                # Mark all as not lowest if no rates
                 for sq in supplier_quotations:
                     supplier = sq.supplier_name or sq.supplier
                     row[f"{supplier}_is_lowest"] = False
@@ -306,15 +312,18 @@ def create_purchase_order_for_supplier(rfq, supplier_name, items, company, requi
     # Add items
     items_added = 0
     for item in items:
-        # Get item details from supplier quotation
+        # Get item details from supplier quotation - USE NET_RATE
         sq_item = frappe.db.get_value(
             "Supplier Quotation Item",
             {"parent": sq[0].name, "item_code": item.item_code},
-            ["rate", "warehouse", "description", "uom"],
+            ["rate", "net_rate", "warehouse", "description", "uom"],
             as_dict=True
         )
         
         if sq_item:
+            # Use net_rate if available, otherwise use rate
+            item_rate = float(sq_item.net_rate) if sq_item.net_rate else float(sq_item.rate)
+            
             warehouse = sq_item.warehouse
             if not warehouse:
                 warehouse = frappe.db.get_value(
@@ -328,7 +337,7 @@ def create_purchase_order_for_supplier(rfq, supplier_name, items, company, requi
                 "item_name": item.item_name,
                 "description": sq_item.description or item.item_name,
                 "qty": item.qty,
-                "rate": sq_item.rate,
+                "rate": item_rate,  # Use net_rate for fair pricing
                 "uom": sq_item.uom or item.uom,
                 "warehouse": warehouse,
                 "schedule_date": required_date,
@@ -400,7 +409,7 @@ def create_purchase_orders(rfq, supplier_selections, project=None, required_date
 
 @frappe.whitelist()
 def get_lowest_suppliers(rfq):
-    """Get the lowest supplier for each item"""
+    """Get the lowest supplier for each item based on net_rate"""
     columns, data, summary, schedule_date = execute({"request_for_quotation": rfq})
     
     lowest_selections = {}
@@ -413,12 +422,12 @@ def get_lowest_suppliers(rfq):
         if min_rate is None:
             continue
         
-        # Find all suppliers with this minimum rate
+        # Find all suppliers with this minimum net_rate
         suppliers_at_min = []
         for key, value in row.items():
-            if key.endswith("_rate") and not key.endswith("_rate_formatted"):
-                if value == min_rate:
-                    supplier = key.replace("_rate", "")
+            if key.endswith("_net_rate") and not key.endswith("_rate_formatted"):
+                if value is not None and abs(value - min_rate) < 0.01:
+                    supplier = key.replace("_net_rate", "")
                     suppliers_at_min.append(supplier)
         
         if len(suppliers_at_min) == 1:
@@ -440,7 +449,7 @@ def get_lowest_suppliers(rfq):
 @frappe.whitelist()
 def get_comparison_data_for_print(rfq):
     """
-    Get formatted comparison data for print formats
+    Get formatted comparison data for print formats using net_rate for comparison
     Returns data suitable for Jinja templates
     """
     columns, data, summary, schedule_date = execute({"request_for_quotation": rfq})
@@ -451,13 +460,14 @@ def get_comparison_data_for_print(rfq):
     # Extract supplier names
     supplier_names = list(summary.keys())
     
-    # Determine lowest bidders
+    # Determine lowest bidders based on net_rate
     lowest_bidders = set()
     for row in data:
-        if row.get("min_rate") is not None:
+        min_rate = row.get("min_rate")
+        if min_rate is not None:
             for supplier in supplier_names:
-                rate = row.get(f"{supplier}_rate")
-                if rate is not None and abs(rate - row["min_rate"]) < 0.01:
+                net_rate = row.get(f"{supplier}_net_rate")
+                if net_rate is not None and abs(net_rate - min_rate) < 0.01:
                     lowest_bidders.add(supplier)
     
     return {
