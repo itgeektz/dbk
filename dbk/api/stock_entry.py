@@ -154,7 +154,10 @@ def before_save(doc, method=None):
     # Only run this check if workflow_state is not in excluded list
     if doc.workflow_state in ["Reviewed", "Received", "Rejected", "Submitted"]:
         return
-
+    try:
+        doc.material_request = doc.item[0].material_request
+    except Exception as e:
+        pass
     for item in doc.items:
 
         if not item.s_warehouse:
@@ -215,7 +218,7 @@ def before_save(doc, method=None):
 
         # Update the source warehouse safely
         item.s_warehouse = selected_wh
-
+        
         frappe.msgprint(
             f"✔ Auto-selected warehouse <b>{selected_wh}</b> for item <b>{item.item_code}</b> "
             f"(Available Qty: <b>{selected_qty}</b>)",
