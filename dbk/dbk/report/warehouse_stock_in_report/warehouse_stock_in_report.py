@@ -175,6 +175,10 @@ def get_columns(filters):
 def get_data(filters):
     data = []
     
+    # Get all warehouses to consider (parent and children if applicable)
+    warehouses = get_warehouses(filters)
+    filters['warehouses'] = warehouses
+    
     # Get Stock Entry data (Material Receipt, Material Transfer, Manufacture, Repack)
     stock_entry_data = get_stock_entry_data(filters)
     data.extend(stock_entry_data)
@@ -192,7 +196,45 @@ def get_data(filters):
     
     return data
 
-def get_stock_entry_data(conditions, filters):
+def get_warehouses(filters):
+    """Get list of warehouses based on filter - includes children if parent warehouse selected"""
+    warehouses = []
+    
+    if filters.get("warehouse"):
+        warehouse = filters.get("warehouse")
+        
+        # Check if this warehouse is a group (has children)
+        is_group = frappe.db.get_value("Warehouse", warehouse, "is_group")
+        
+        if is_group:
+            # Get all child warehouses using nested set model
+            child_warehouses = frappe.db.sql("""
+                SELECT w2.name 
+                FROM `tabWarehouse` w1
+                INNER JOIN `tabWarehouse` w2 
+                    ON w2.lft >= w1.lft AND w2.rgt <= w1.rgt
+                WHERE w1.name = %s 
+                    AND w2.is_group = 0
+                    AND w2.company = %s
+                ORDER BY w2.name
+            """, (warehouse, filters.get("company")), as_list=1)
+            
+            warehouses = [w[0] for w in child_warehouses] if child_warehouses else []
+        else:
+            # Single warehouse
+            warehouses = [warehouse]
+    else:
+        # No warehouse filter - get all non-group warehouses for the company
+        warehouses = frappe.db.sql_list("""
+            SELECT name 
+            FROM `tabWarehouse`
+            WHERE company = %s AND is_group = 0
+            ORDER BY name
+        """, filters.get("company"))
+    
+    return warehouses
+
+def get_stock_entry_data(filters):
     """Get stock entries where stock is coming IN to warehouse"""
     
     stock_entry_types = []
@@ -207,11 +249,23 @@ def get_stock_entry_data(conditions, filters):
             'Repack'
         ]
     
-    # Build type condition using tuple format for frappe
+    # Build type condition using tuple format
     type_condition = ""
     if stock_entry_types:
-        types_tuple = tuple(stock_entry_types)
-        type_condition = f" AND se.stock_entry_type IN {types_tuple}"
+        if len(stock_entry_types) == 1:
+            type_condition = f" AND se.stock_entry_type = '{stock_entry_types[0]}'"
+        else:
+            types_tuple = tuple(stock_entry_types)
+            type_condition = f" AND se.stock_entry_type IN {types_tuple}"
+    
+    # Build warehouse condition
+    warehouse_condition = ""
+    warehouses = filters.get("warehouses", [])
+    if warehouses:
+        if len(warehouses) == 1:
+            warehouse_condition = f" AND sed.t_warehouse = '{warehouses[0]}'"
+        else:
+            warehouse_condition = f" AND sed.t_warehouse IN {tuple(warehouses)}"
     
     query = f"""
         SELECT
@@ -248,6 +302,7 @@ def get_stock_entry_data(conditions, filters):
             AND sed.t_warehouse IS NOT NULL
             AND sed.t_warehouse != ''
             AND se.company = %(company)s
+            {warehouse_condition}
     """
     
     # Add optional conditions
@@ -256,9 +311,6 @@ def get_stock_entry_data(conditions, filters):
     
     if filters.get("to_date"):
         query += " AND se.posting_date <= %(to_date)s"
-    
-    if filters.get("warehouse"):
-        query += " AND sed.t_warehouse = %(warehouse)s"
     
     if filters.get("item_code"):
         query += " AND sed.item_code = %(item_code)s"
@@ -270,21 +322,39 @@ def get_stock_entry_data(conditions, filters):
     
     data = frappe.db.sql(query, filters, as_dict=1)
     
-    # Get linked Material Request and other details
+    # Get linked RFQ from Purchase Order
     for row in data:
-        if row.get('material_request'):
-            mr_details = frappe.db.get_value('Material Request', 
-                row['material_request'], 
-                ['supplier_quotation'], as_dict=1)
-            if mr_details:
-                row['supplier_quotation'] = mr_details.get('supplier_quotation')
+        if row.get('purchase_order'):
+            # Get RFQ from Purchase Order
+            rfq = frappe.db.get_value('Purchase Order', row['purchase_order'], 'rfq')
+            if rfq:
+                row['rfq'] = rfq
+                # Get supplier quotation if exists
+                sq = frappe.db.sql("""
+                    SELECT name 
+                    FROM `tabSupplier Quotation`
+                    WHERE request_for_quotation = %s
+                    AND docstatus = 1
+                    LIMIT 1
+                """, rfq, as_dict=1)
+                if sq:
+                    row['supplier_quotation'] = sq[0].name
     
     return data
 
 def get_purchase_receipt_data(filters):
     """Get purchase receipt data"""
     
-    query = """
+    # Build warehouse condition
+    warehouse_condition = ""
+    warehouses = filters.get("warehouses", [])
+    if warehouses:
+        if len(warehouses) == 1:
+            warehouse_condition = f" AND pri.warehouse = '{warehouses[0]}'"
+        else:
+            warehouse_condition = f" AND pri.warehouse IN {tuple(warehouses)}"
+    
+    query = f"""
         SELECT
             pr.posting_date,
             pr.posting_time,
@@ -299,14 +369,14 @@ def get_purchase_receipt_data(filters):
             pri.stock_uom,
             pri.stock_qty,
             pri.valuation_rate,
-            pri.amount,
+            pri.base_net_amount as amount,
             pri.batch_no,
             pri.serial_no,
             NULL as stock_entry_type,
             pr.supplier,
             pri.purchase_order,
-            pri.material_request,
-            pri.supplier_quotation,
+            NULL as material_request,
+            NULL as supplier_quotation,
             NULL as rfq,
             pri.project,
             pr.remarks
@@ -318,6 +388,7 @@ def get_purchase_receipt_data(filters):
             pr.docstatus = 1
             AND pri.warehouse IS NOT NULL
             AND pr.company = %(company)s
+            {warehouse_condition}
     """
     
     # Add optional conditions
@@ -326,9 +397,6 @@ def get_purchase_receipt_data(filters):
     
     if filters.get("to_date"):
         query += " AND pr.posting_date <= %(to_date)s"
-    
-    if filters.get("warehouse"):
-        query += " AND pri.warehouse = %(warehouse)s"
     
     if filters.get("item_code"):
         query += " AND pri.item_code = %(item_code)s"
@@ -341,31 +409,45 @@ def get_purchase_receipt_data(filters):
     
     data = frappe.db.sql(query, filters, as_dict=1)
     
-    # Get RFQ from Purchase Order or Supplier Quotation
+    # Get RFQ and Supplier Quotation from Purchase Order
     for row in data:
-        if row.get('supplier_quotation'):
-            rfq = frappe.db.get_value('Supplier Quotation', 
-                row['supplier_quotation'], 'request_for_quotation')
-            row['rfq'] = rfq
-        elif row.get('purchase_order'):
-            # Get RFQ from PO through Supplier Quotation
-            sq = frappe.db.sql("""
-                SELECT sq.name, sq.request_for_quotation
-                FROM `tabSupplier Quotation` sq
-                INNER JOIN `tabSupplier Quotation Item` sqi ON sq.name = sqi.parent
-                WHERE sqi.purchase_order = %s
-                LIMIT 1
-            """, row['purchase_order'], as_dict=1)
-            if sq:
-                row['supplier_quotation'] = sq[0].name
-                row['rfq'] = sq[0].request_for_quotation
+        if row.get('purchase_order'):
+            # Get RFQ from Purchase Order
+            po_data = frappe.db.get_value('Purchase Order', 
+                row['purchase_order'], 
+                ['rfq'], as_dict=1)
+            
+            if po_data and po_data.get('rfq'):
+                row['rfq'] = po_data.get('rfq')
+                
+                # Get Supplier Quotation linked to this RFQ
+                sq = frappe.db.sql("""
+                    SELECT name 
+                    FROM `tabSupplier Quotation`
+                    WHERE request_for_quotation = %s
+                    AND supplier = %s
+                    AND docstatus = 1
+                    LIMIT 1
+                """, (row['rfq'], row['supplier']), as_dict=1)
+                
+                if sq:
+                    row['supplier_quotation'] = sq[0].name
     
     return data
 
 def get_stock_reconciliation_data(filters):
     """Get stock reconciliation data where quantity increased"""
     
-    query = """
+    # Build warehouse condition
+    warehouse_condition = ""
+    warehouses = filters.get("warehouses", [])
+    if warehouses:
+        if len(warehouses) == 1:
+            warehouse_condition = f" AND sri.warehouse = '{warehouses[0]}'"
+        else:
+            warehouse_condition = f" AND sri.warehouse IN {tuple(warehouses)}"
+    
+    query = f"""
         SELECT
             sr.posting_date,
             sr.posting_time,
@@ -375,12 +457,12 @@ def get_stock_reconciliation_data(filters):
             sri.item_name,
             i.item_group,
             sri.warehouse,
-            (sri.qty - sri.current_qty) as qty,
+            (sri.qty - IFNULL(sri.current_qty, 0)) as qty,
             i.stock_uom as uom,
             i.stock_uom as stock_uom,
-            (sri.qty - sri.current_qty) as stock_qty,
+            (sri.qty - IFNULL(sri.current_qty, 0)) as stock_qty,
             sri.valuation_rate,
-            ((sri.qty - sri.current_qty) * sri.valuation_rate) as amount,
+            ((sri.qty - IFNULL(sri.current_qty, 0)) * sri.valuation_rate) as amount,
             sri.batch_no,
             sri.serial_no,
             NULL as stock_entry_type,
@@ -390,7 +472,7 @@ def get_stock_reconciliation_data(filters):
             NULL as supplier_quotation,
             NULL as rfq,
             NULL as project,
-            sr.remarks
+            sr.purpose as remarks
         FROM
             `tabStock Reconciliation` sr
         INNER JOIN
@@ -399,8 +481,9 @@ def get_stock_reconciliation_data(filters):
             `tabItem` i ON sri.item_code = i.name
         WHERE
             sr.docstatus = 1
-            AND (sri.qty - sri.current_qty) > 0
+            AND (sri.qty - IFNULL(sri.current_qty, 0)) > 0
             AND sr.company = %(company)s
+            {warehouse_condition}
     """
     
     # Add optional conditions
@@ -409,9 +492,6 @@ def get_stock_reconciliation_data(filters):
     
     if filters.get("to_date"):
         query += " AND sr.posting_date <= %(to_date)s"
-    
-    if filters.get("warehouse"):
-        query += " AND sri.warehouse = %(warehouse)s"
     
     if filters.get("item_code"):
         query += " AND sri.item_code = %(item_code)s"

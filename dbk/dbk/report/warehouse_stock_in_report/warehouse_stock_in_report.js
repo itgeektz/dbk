@@ -56,6 +56,7 @@ frappe.query_reports["Warehouse Stock In Report"] = {
 			"fieldtype": "Link",
 			"options": "Item Group"
 		},
+		/***
 		{
 			"fieldname": "stock_entry_type",
 			"label": __("Stock Entry Type"),
@@ -69,6 +70,7 @@ frappe.query_reports["Warehouse Stock In Report"] = {
 			"fieldtype": "Link",
 			"options": "Supplier"
 		}
+			***/
 	],
 	
 	"formatter": function(value, row, column, data, default_formatter) {

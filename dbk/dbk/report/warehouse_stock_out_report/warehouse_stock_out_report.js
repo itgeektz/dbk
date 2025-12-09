@@ -19,9 +19,10 @@ frappe.query_reports["Warehouse Stock Out Report"] = {
 		},
 		{
 			"fieldname": "warehouse",
-			"label": __("Warehouse"),
+			"label": __("From Warehouse"),
 			"fieldtype": "Link",
 			"options": "Warehouse",
+			"default": "Main Store - DBK",
 			"get_query": function() {
 				return {
 					"filters": {}
@@ -35,24 +36,21 @@ frappe.query_reports["Warehouse Stock Out Report"] = {
 			"default": 1,
 			"description": "If warehouse is a group, aggregate data from all child warehouses"
 		},
-		{
-			"fieldname": "department",
-			"label": __("Department (Item Group)"),
-			"fieldtype": "Link",
-			"options": "Item Group"
-		},
+		
 		{
 			"fieldname": "item_code",
 			"label": __("Item"),
 			"fieldtype": "Link",
 			"options": "Item",
+			/***
 			"get_query": function() {
 				return {
 					"query": "frappe.desk.search.search_link",
 					"filters": {}
-				};
-			}
+				}; ***/
+	
 		},
+	
 		{
 			"fieldname": "item_group",
 			"label": __("Item Group"),
@@ -82,31 +80,7 @@ frappe.query_reports["Warehouse Stock Out Report"] = {
 			value = `<span style="color: #e53e3e; font-weight: 600;">${value}</span>`;
 		}
 		
-		// Format department with badge
-		if (column.fieldname == "department" && data && data.department) {
-			const colors = {
-				'MVM': 'badge-primary',
-				'GENERAL': 'badge-success',
-				'Tailoring': 'badge-info',
-				'Carpentry': 'badge-warning',
-				'Uncategorized': 'badge-secondary'
-			};
-			const badge_class = colors[data.department] || 'badge-primary';
-			value = `<span class="badge ${badge_class}">${data.department}</span>`;
-		}
-		
-		// Format warehouse names with shorter display
-		if ((column.fieldname == "from_warehouse" || column.fieldname == "to_warehouse") && value) {
-			// Show shortened warehouse name if too long
-			const display_value = value.length > 20 ? value.substring(0, 20) + '...' : value;
-			value = `<span style="font-size: 0.85em;" title="${value}">${display_value}</span>`;
-		}
-		
-		// Format comment with tooltip for long text
-		if (column.fieldname == "comment" && value) {
-			const display_value = value.length > 50 ? value.substring(0, 50) + '...' : value;
-			value = `<span title="${value}">${display_value}</span>`;
-		}
+		 
 		
 		return value;
 	},
