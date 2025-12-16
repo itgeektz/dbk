@@ -547,3 +547,64 @@ def clean_empty_html(html_content):
     text_only = text_only.replace('&nbsp;', '').strip()
     
     return html_content if text_only else None
+
+# Add this method to your dbk_supplier_comparisson.py file
+
+@frappe.whitelist()
+def get_supplier_quotation(rfq, supplier, item_code):
+    """
+    Get the Supplier Quotation reference for a specific item from a specific supplier
+    based on the Request for Quotation.
+    
+    Args:
+        rfq: Request for Quotation name
+        supplier: Supplier name
+        item_code: Item code
+    
+    Returns:
+        dict: Contains supplier_quotation name and other relevant details
+    """
+    try:
+        # Query to find the Supplier Quotation
+        sq_data = frappe.db.sql("""
+            SELECT 
+                sq.name as supplier_quotation,
+                sqi.item_code,
+                sqi.qty,
+                sqi.rate,
+                sqi.amount,
+                sq.transaction_date,
+                sq.valid_till
+            FROM 
+                `tabSupplier Quotation` sq
+            INNER JOIN 
+                `tabSupplier Quotation Item` sqi ON sq.name = sqi.parent
+            WHERE 
+                sq.request_for_quotation = %(rfq)s
+                AND sq.supplier = %(supplier)s
+                AND sqi.item_code = %(item_code)s
+                AND sq.docstatus < 2
+            ORDER BY 
+                sq.transaction_date DESC
+            LIMIT 1
+        """, {
+            'rfq': rfq,
+            'supplier': supplier,
+            'item_code': item_code
+        }, as_dict=True)
+        
+        if sq_data:
+            return sq_data[0]
+        else:
+            frappe.log_error(
+                f"No Supplier Quotation found for RFQ: {rfq}, Supplier: {supplier}, Item: {item_code}",
+                "Supplier Quotation Not Found"
+            )
+            return None
+            
+    except Exception as e:
+        frappe.log_error(
+            f"Error fetching supplier quotation: {str(e)}",
+            "Get Supplier Quotation Error"
+        )
+        return None

@@ -1,0 +1,63 @@
+{
+ "add_total_row": 0,
+ "add_translate_data": 0,
+ "columns": [],
+ "creation": "2025-12-16 21:56:52.269097",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "Don Bosco Kakuma",
+ "letterhead": null,
+ "modified": "2025-12-16 22:26:55.552013",
+ "modified_by": "Administrator",
+ "module": "DBK",
+ "name": "RFQ Items from Material Request Enhanced",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Material Request",
+ "report_name": "RFQ Items from Material Request Enhanced",
+ "report_script": "def execute(filters=None):\n    try:\n        columns = get_columns()\n        data = get_data(filters)\n        return columns, data\n    except Exception as e:\n        frappe.log_error(f\"Report execution failed: {str(e)}\", \"RFQ Report Error\")\n        frappe.msgprint(f\"Error executing report: {str(e)}\")\n        return get_columns(), []\n\n\ndef get_columns():\n    return [\n        {\"label\": _(\"Material Request\"), \"fieldname\": \"material_request\", \"fieldtype\": \"Link\", \"options\": \"Material Request\", \"width\": 150},\n        {\"label\": _(\"Transaction Date\"), \"fieldname\": \"transaction_date\", \"fieldtype\": \"Date\", \"width\": 110},\n        {\"label\": _(\"Item Code\"), \"fieldname\": \"item_code\", \"fieldtype\": \"Link\", \"options\": \"Item\", \"width\": 150},\n        {\"label\": _(\"Item Name\"), \"fieldname\": \"item_name\", \"fieldtype\": \"Data\", \"width\": 150},\n        {\"label\": _(\"Quantity\"), \"fieldname\": \"qty\", \"fieldtype\": \"Float\", \"width\": 100},\n        {\"label\": _(\"UOM\"), \"fieldname\": \"uom\", \"fieldtype\": \"Link\", \"options\": \"UOM\", \"width\": 80},\n        {\"label\": _(\"Purchase UOM\"), \"fieldname\": \"purchase_uom\", \"fieldtype\": \"Link\", \"options\": \"UOM\", \"width\": 110},\n        {\"label\": _(\"Conversion Factor\"), \"fieldname\": \"conversion_factor\", \"fieldtype\": \"Float\", \"width\": 120},\n        {\"label\": _(\"Qty in Purchase UOM\"), \"fieldname\": \"qty_in_purchase_uom\", \"fieldtype\": \"Float\", \"width\": 140},\n        {\"label\": _(\"Required Date\"), \"fieldname\": \"schedule_date\", \"fieldtype\": \"Date\", \"width\": 110},\n        {\"label\": _(\"Target Warehouse\"), \"fieldname\": \"warehouse\", \"fieldtype\": \"Link\", \"options\": \"Warehouse\", \"width\": 150},\n        {\"label\": _(\"Approval Status\"), \"fieldname\": \"workflow_state\", \"fieldtype\": \"Data\", \"width\": 120},\n        {\"label\": _(\"Rate\"), \"fieldname\": \"rate\", \"fieldtype\": \"Currency\", \"width\": 100},\n        {\"label\": _(\"Amount\"), \"fieldname\": \"amount\", \"fieldtype\": \"Currency\", \"width\": 120}\n    ]\n\n\ndef get_data(filters):\n    if not filters or not filters.get(\"from_date\") or not filters.get(\"to_date\"):\n        frappe.throw(_(\"From Date and To Date are mandatory\"))\n    \n    try:\n        data = frappe.db.sql(\"\"\"\n            SELECT\n                mr.name AS material_request,\n                mr.transaction_date,\n                mri.item_code,\n                mri.item_name,\n                mri.qty,\n                mri.uom,\n                mri.schedule_date,\n                mri.warehouse,\n                mr.workflow_state,\n                mri.rate,\n                mri.amount,\n                mri.name as mr_item_name\n            FROM\n                `tabMaterial Request` mr\n            JOIN\n                `tabMaterial Request Item` mri ON mri.parent = mr.name\n            WHERE\n                mr.docstatus < 2 \n                AND mri.custom_purchase = 1 \n                AND mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s\n            ORDER BY\n                mr.transaction_date DESC, mr.name DESC\n        \"\"\", filters, as_dict=1)\n    except Exception as e:\n        frappe.log_error(f\"SQL query failed: {str(e)}\", \"RFQ Report SQL Error\")\n        frappe.throw(_(\"Failed to fetch data: {0}\").format(str(e)))\n    \n    if not data:\n        return []\n    \n    for row in data:\n        try:\n            process_row(row)\n        except Exception as e:\n            frappe.log_error(f\"Error processing item {row.get('item_code', 'Unknown')}: {str(e)}\", \"RFQ Report Row Processing Error\")\n            row['purchase_uom'] = row.get('uom', 'Nos')\n            row['conversion_factor'] = 1.0\n            row['qty_in_purchase_uom'] = row.get('qty', 0)\n    \n    return data\n\n\ndef process_row(row):\n    try:\n        item = frappe.get_cached_doc(\"Item\", row['item_code'])\n    except Exception as e:\n        frappe.log_error(f\"Failed to fetch item {row['item_code']}: {str(e)}\", \"RFQ Report Item Fetch Error\")\n        row['purchase_uom'] = row.get('uom', 'Nos')\n        row['conversion_factor'] = 1.0\n        row['qty_in_purchase_uom'] = row.get('qty', 0)\n        return\n    \n    purchase_uom = None\n    try:\n        purchase_uom = getattr(item, 'purchase_uom', None)\n    except:\n        pass\n    \n    if not purchase_uom:\n        try:\n            purchase_uom = item.stock_uom\n        except:\n            purchase_uom = row.get('uom', 'Nos')\n    \n    row['purchase_uom'] = purchase_uom\n    \n    conversion_factor = 1.0\n    if row['uom'] != purchase_uom:\n        try:\n            conversion_factor = get_uom_conversion_factor(row['item_code'], row['uom'], purchase_uom)\n        except Exception as e:\n            frappe.log_error(f\"Conversion factor error for {row['item_code']}: {str(e)}\", \"RFQ Report Conversion Error\")\n            conversion_factor = 1.0\n    \n    row['conversion_factor'] = conversion_factor\n    \n    try:\n        qty = flt(row.get('qty', 0))\n        row['qty_in_purchase_uom'] = flt(qty * conversion_factor, 2)\n    except:\n        row['qty_in_purchase_uom'] = row.get('qty', 0)\n\n\ndef get_uom_conversion_factor(item_code, from_uom, to_uom):\n    if from_uom == to_uom:\n        return 1.0\n    \n    try:\n        conversion = frappe.db.get_value(\"UOM Conversion Detail\", {\"parent\": item_code, \"uom\": to_uom}, \"conversion_factor\")\n        if conversion:\n            return flt(conversion)\n    except:\n        pass\n    \n    try:\n        reverse = frappe.db.get_value(\"UOM Conversion Detail\", {\"parent\": item_code, \"uom\": from_uom}, \"conversion_factor\")\n        if reverse and flt(reverse) != 0:\n            return flt(1.0 / reverse)\n    except:\n        pass\n    \n    return 1.0\n",
+ "report_type": "Script Report",
+ "roles": [
+  {
+   "role": "Purchase Manager"
+  },
+  {
+   "role": "Purchase User"
+  },
+  {
+   "role": "Stock User"
+  },
+  {
+   "role": "Stock Manager"
+  },
+  {
+   "role": "Procurement Officer"
+  },
+  {
+   "role": "Store Manager"
+  },
+  {
+   "role": "Principal"
+  },
+  {
+   "role": "DBK User"
+  },
+  {
+   "role": "Accounts Manager"
+  },
+  {
+   "role": "Projects Manager"
+  },
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "DBK Admin"
+  }
+ ],
+ "timeout": 300
+}

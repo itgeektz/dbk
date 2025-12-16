@@ -142,6 +142,27 @@ async function printSimpleComparison(report) {
 }
 
 // ============================================
+// Get Supplier Quotation for Item
+// ============================================
+async function getSupplierQuotation(rfq_name, supplier_name, item_code) {
+  try {
+    const result = await frappe.call({
+      method: "dbk.dbk.doctype.rfq_meeting.rfq_meeting.get_supplier_quotation_for_item",
+      args: {
+        rfq: rfq_name,
+        supplier: supplier_name,
+        item_code: item_code
+      }
+    });
+    
+    return result.message;
+  } catch (error) {
+    console.error("Error fetching supplier quotation:", error);
+    return null;
+  }
+}
+
+// ============================================
 // Create Meeting & Purchase Orders
 // ============================================
 async function createMeeting(report) {
@@ -301,20 +322,28 @@ async function createMeetingDocument(values, data, rfq) {
   });
 
   try {
-    // Extract item selections
+    // Extract item selections with supplier quotation references
     const item_selections = [];
-    data.forEach(row => {
+    
+    for (const row of data) {
       const fieldname = `item_${row.item_code}`;
       if (values[fieldname]) {
+        const selected_supplier = values[fieldname];
+        
+        // Get supplier quotation reference
+        const quotation_data = await getSupplierQuotation(rfq, selected_supplier, row.item_code);
+        
         item_selections.push({
           item_code: row.item_code,
           item_name: row.item_name,
           qty: row.qty,
           uom: row.uom,
-          selected_supplier: values[fieldname]
+          selected_supplier: selected_supplier,
+          supplier_quotation: quotation_data ? quotation_data.supplier_quotation : null,
+          quoted_rate: row[`${selected_supplier}_rate`]
         });
       }
-    });
+    }
 
     // Get RFQ doc for company
     const rfq_doc = await frappe.db.get_doc('Request for Quotation', rfq);
@@ -371,31 +400,6 @@ async function createMeetingDocument(values, data, rfq) {
         // User chose to go to the meeting document
         frappe.set_route("Form", "RFQ Meeting", meeting_name);
       }
-      /*{
-        try {
-          await frappe.call({
-            method: "frappe.client.submit",
-            args: {
-              doc: meeting.message
-            }
-          });
-
-          frappe.show_alert({
-            message: __("Meeting submitted and Purchase Orders created!"),
-            indicator: "green"
-          }, 10);
-
-          // Open the meeting
-          frappe.set_route("Form", "RFQ Meeting", meeting_name);
-        } catch (error) {
-          frappe.msgprint(__("Error submitting meeting: " + error.message));
-          frappe.set_route("Form", "RFQ Meeting", meeting_name);
-        }
-      },
-      () => {
-        // User chose not to submit, just open the meeting
-        frappe.set_route("Form", "RFQ Meeting", meeting_name);
-      } */
     );
 
   } catch (error) {

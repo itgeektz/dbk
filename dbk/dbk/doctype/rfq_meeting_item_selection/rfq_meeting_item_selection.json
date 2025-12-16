@@ -12,7 +12,10 @@
   "uom",
   "column_break_5",
   "selected_supplier",
-  "available_suppliers"
+  "available_suppliers",
+    "quoted_rate",
+    "supplier_quotation",
+    "section_break_2"
  ],
  "fields": [
   {
@@ -50,9 +53,10 @@
   },
   {
    "fieldname": "selected_supplier",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Selected Supplier",
+   "options": "Supplier",
    "reqd": 1
   },
   {
@@ -60,7 +64,29 @@
    "fieldtype": "Small Text",
    "label": "Available Suppliers (Info)",
    "read_only": 1
-  }
+  },
+  {
+      "fieldname": "quoted_rate",
+      "label": "Quoted Rate",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "read_only": 1,
+      "description": "Rate from selected supplier's quotation"
+    },
+    {
+      "fieldname": "supplier_quotation",
+      "label": "Supplier Quotation",
+      "fieldtype": "Link",
+      "options": "Supplier Quotation",
+      "read_only": 1,
+      "hidden": 0,
+      "description": "Reference to the supplier quotation"
+    },
+    {
+      "fieldname": "section_break_2",
+      "fieldtype": "Section Break",
+      "label": "Available Suppliers & Rates"
+    }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
