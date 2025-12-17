@@ -326,14 +326,15 @@ def get_stock_entry_data(filters):
     for row in data:
         if row.get('purchase_order'):
             # Get RFQ from Purchase Order
-            rfq = frappe.db.get_value('Purchase Order', row['purchase_order'], 'rfq')
+            rfq = frappe.db.get_value('Purchase Order', row['purchase_order'], 'request_for_quotation')
             if rfq:
                 row['rfq'] = rfq
                 # Get supplier quotation if exists
                 sq = frappe.db.sql("""
-                    SELECT name 
-                    FROM `tabSupplier Quotation`
-                    WHERE request_for_quotation = %s
+                    SELECT sq.name 
+                    FROM `tabSupplier Quotation` as sq
+                                   inner join `tabSupplier Quotation Item` as sqi on sqi.parent = sq.name
+                    WHERE sqi.request_for_quotation = %s
                     AND docstatus = 1
                     LIMIT 1
                 """, rfq, as_dict=1)
@@ -415,16 +416,17 @@ def get_purchase_receipt_data(filters):
             # Get RFQ from Purchase Order
             po_data = frappe.db.get_value('Purchase Order', 
                 row['purchase_order'], 
-                ['rfq'], as_dict=1)
+                ['request_for_quotation'], as_dict=1)
             
-            if po_data and po_data.get('rfq'):
-                row['rfq'] = po_data.get('rfq')
+            if po_data and po_data.get('request_for_quotation'):
+                row['rfq'] = po_data.get('request_for_quotation')
                 
                 # Get Supplier Quotation linked to this RFQ
                 sq = frappe.db.sql("""
                     SELECT name 
-                    FROM `tabSupplier Quotation`
-                    WHERE request_for_quotation = %s
+                    FROM `tabSupplier Quotation` as sq
+                                   inner join `tabSupplier Quotation Item` as sqi on sqi.parent = sq.name
+                    WHERE sqi.request_for_quotation = %s
                     AND supplier = %s
                     AND docstatus = 1
                     LIMIT 1

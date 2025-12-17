@@ -91,9 +91,9 @@ frappe.query_reports["Warehouse Stock Out Report"] = {
 			frappe.query_report.export_report("xlsx");
 		});
 		
-		report.page.add_inner_button(__("Print"), function() {
+		/*** report.page.add_inner_button(__("Print"), function() {
 			frappe.query_report.print_report();
-		});
+		}); ***/
 		
 		// Add summary section
 		report.page.add_inner_button(__("Show Summary"), function() {
