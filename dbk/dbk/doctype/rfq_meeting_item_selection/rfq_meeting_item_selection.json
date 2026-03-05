@@ -38,7 +38,7 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Qty",
-   "read_only": 1
+   "read_only": 0
   },
   {
    "fieldname": "uom",
