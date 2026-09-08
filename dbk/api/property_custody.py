@@ -169,8 +169,8 @@ def return_against_query(doctype, txt, searchfield, start, page_len, filters):
 	start = cint(start)
 	page_len = cint(page_len) or 20
 
-	list_filters = {"is_return": 0, "docstatus": 1}
-	or_filters = [["name", "like", f"%{txt}%"]] if txt else None
+	list_filters = {"is_return": 0, "workflow_state": "**Received**"}
+	# or_filters = [["name", "like", f"%{txt}%"]] if txt else None
 
 	needed = start + page_len
 	matches = []
@@ -181,7 +181,7 @@ def return_against_query(doctype, txt, searchfield, start, page_len, filters):
 		candidates = frappe.get_list(
 			REQUEST_DOCTYPE,
 			filters=list_filters,
-			or_filters=or_filters,
+			# or_filters=or_filters,
 			fields=["name"],
 			order_by="modified desc",
 			limit_start=scan_start,
