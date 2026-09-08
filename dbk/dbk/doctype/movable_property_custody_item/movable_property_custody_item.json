@@ -1,0 +1,102 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-08-22 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "item_name",
+  "description",
+  "stock_uom",
+  "qty",
+  "column_break_tag",
+  "unit_tag",
+  "condition_flag",
+  "condition_remarks",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Code",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "item_code.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "item_code.description",
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "item_code.stock_uom",
+   "fieldname": "stock_uom",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_tag",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Optional. An asset tag or stencilled serial already on the physical unit — not linked to ERPNext's stock Serial No. Leave blank for ordinary bulk qty. If set, Qty must be 1.",
+   "fieldname": "unit_tag",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Serial / Unit Tag"
+  },
+  {
+   "default": "Good",
+   "fieldname": "condition_flag",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Condition",
+   "options": "Good\nDamaged\nMissing"
+  },
+  {
+   "depends_on": "eval:doc.condition_flag && doc.condition_flag != \"Good\"",
+   "fieldname": "condition_remarks",
+   "fieldtype": "Small Text",
+   "label": "Condition Remarks"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-22 00:00:00",
+ "modified_by": "Administrator",
+ "module": "DBK",
+ "name": "Movable Property Custody Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

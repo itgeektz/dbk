@@ -130,12 +130,24 @@ doctype_js = {
 # }
 
 permission_query_conditions = {
-    "Stock Entry": "dbk.api.stock_entry.stock_entry_permission_query"
+    "Stock Entry": "dbk.api.stock_entry.stock_entry_permission_query",
+    "Movable Property Custody Request": "dbk.api.property_custody.property_custody_permission_query",
 }
 
 has_permission = {
-    "Stock Entry": "dbk.api.stock_entry.stock_entry_has_permission"
+    "Stock Entry": "dbk.api.stock_entry.stock_entry_has_permission",
+    "Movable Property Custody Request": "dbk.api.property_custody.property_custody_has_permission",
 }
+
+# Fixtures
+# --------
+# Ships the "Movable Property Custodian" role used by the Movable Items &
+# Property Custody module. The Workflow itself is intentionally NOT a
+# fixture here — see WORKFLOW_SETUP.md, it's meant to be configured by hand
+# in Settings > Workflow so the number of approval steps stays yours to tune.
+fixtures = [
+    {"dt": "Role", "filters": [["name", "in", ["Movable Property Custodian"]]]}
+]
 # DocType Class
 # ---------------
 # Override standard doctype classes
@@ -204,6 +216,12 @@ doc_events = {
     "Supplier Quotation": {
         "before_submit": [
             "dbk.api.utils.update_approver"
+        ]
+    },
+
+    "Movable Property Custody Request": {
+        "before_submit": [
+            "dbk.api.property_custody.check_property_receive_permission"
         ]
     },
 
