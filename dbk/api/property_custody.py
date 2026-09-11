@@ -169,7 +169,7 @@ def return_against_query(doctype, txt, searchfield, start, page_len, filters):
 	start = cint(start)
 	page_len = cint(page_len) or 20
 
-	list_filters = {"is_return": 0, "workflow_state": "Received}
+	list_filters = {"is_return": 0, "workflow_state": "Received"}
 	# or_filters = [["name", "like", f"%{txt}%"]] if txt else None
 
 	needed = start + page_len
