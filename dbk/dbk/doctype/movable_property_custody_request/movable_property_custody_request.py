@@ -11,7 +11,10 @@ from dbk.api.property_custody import get_outstanding_map, post_ledger_entries, p
 # The one workflow_state a transition is allowed to submit from. Set up your
 # Workflow (see WORKFLOW_SETUP.md) so that only the "Receive" action leads to
 # a docstatus-1 state, and name that state exactly "Received".
-RECEIVE_STATE = "Received"
+RECEIVE_STATES = {
+	0: "Received",           # Issue
+	1: "Received at Store",  # Return
+}
 
 
 class MovablePropertyCustodyRequest(Document):
@@ -92,15 +95,25 @@ class MovablePropertyCustodyRequest(Document):
 				)
 
 	def before_submit(self):
-		# Defence in depth: only the Received workflow transition should ever
-		# be the thing that flips this document to docstatus 1.
-		if self.workflow_state and self.workflow_state != RECEIVE_STATE:
+		"""Permit submission only from the correct final workflow state."""
+
+		expected_state = (
+			"Received at Store"
+			if cint(self.is_return)
+			else "Received"
+		)
+
+		if self.workflow_state != expected_state:
 			frappe.throw(
-				_("This document can only be submitted through the \"{0}\" workflow action.").format(RECEIVE_STATE)
+				_(
+					'This document can only be submitted through the '
+					'"{0}" workflow state.'
+				).format(expected_state)
 			)
 
 		if not self.posting_date:
 			self.posting_date = nowdate()
+
 		if not self.posting_time:
 			self.posting_time = nowtime()
 
